@@ -141,7 +141,8 @@ func addModule(name, importPath, modulePath string) {
 	if _, found := ModuleByName(name); found {
 		ERROR.Panicf("Attempt to import duplicate module %s path %s aborting startup", name, modulePath)
 	}
-	Modules = append(Modules, &Module{Name: name, ImportPath: importPath, Path: modulePath})
+	module := &Module{Name: name, ImportPath: importPath, Path: modulePath}
+	Modules = append(Modules, module)
 	if codePath := filepath.Join(modulePath, "app"); DirExists(codePath) {
 		CodePaths = append(CodePaths, codePath)
 		if viewsPath := filepath.Join(modulePath, "app", "views"); DirExists(viewsPath) {
@@ -161,4 +162,6 @@ func addModule(name, importPath, modulePath string) {
 		INFO.Print("Found tests path ", testsPath)
 		CodePaths = append(CodePaths, testsPath)
 	}
+	fireEvent(MODULE_ADDED,module)
+
 }

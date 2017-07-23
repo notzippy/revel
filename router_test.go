@@ -95,13 +95,14 @@ var routeTestCases = map[string]*Route{
 
 // Run the test cases above.
 func TestComputeRoute(t *testing.T) {
+	initControllers()
 	for routeLine, expected := range routeTestCases {
 		method, path, action, fixedArgs, found := parseRouteLine(routeLine)
 		if !found {
 			t.Error("Failed to parse route line:", routeLine)
 			continue
 		}
-		actual := NewRoute(appModule, method, path, action, fixedArgs, "", 0)
+		actual, _ := NewRoute(appModule, method, path, action, fixedArgs, "", 0)
 		eq(t, "Method", actual.Method, expected.Method)
 		eq(t, "Path", actual.Path, expected.Path)
 		eq(t, "Action", actual.Action, expected.Action)
@@ -269,6 +270,8 @@ func TestRouteMatches(t *testing.T) {
 		t.Log("Routing:", req.Method, req.URL)
 		actual := router.Route(req)
 		if !eq(t, "Found route", actual != nil, expected != nil) {
+			println("Actual", actual)
+			println("Expected", expected)
 			continue
 		}
 		if expected.ControllerName != "" {
@@ -409,8 +412,8 @@ func BenchmarkLargeRouter(b *testing.B) {
 	routePaths = append(routePaths, "/:any")
 
 	for _, p := range routePaths {
-		router.Routes = append(router.Routes,
-			NewRoute(appModule, "GET", p, "Controller.Action", "", "", 0))
+		route, _ := NewRoute(appModule, "GET", p, "Controller.Action", "", "", 0)
+		router.Routes = append(router.Routes, route)
 	}
 	if err := router.updateTree(); err != nil {
 		b.Errorf("updateTree failed: %s", err)
@@ -476,6 +479,7 @@ func TestOverrideMethodFilter(t *testing.T) {
 func eq(t *testing.T, name string, a, b interface{}) bool {
 	if a != b {
 		t.Error(name, ": (actual)", a, " != ", b, "(expected)")
+		//panic("Mismatch")
 		return false
 	}
 	return true

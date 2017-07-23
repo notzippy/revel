@@ -38,6 +38,8 @@ const (
 	// Called after routes have been refreshed
 	ROUTE_REFRESH_COMPLETED
 
+	// Called when module is added
+	MODULE_ADDED
 )
 type revelLogs struct {
 	c gocolorize.Colorize

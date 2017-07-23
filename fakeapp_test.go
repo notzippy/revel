@@ -134,6 +134,32 @@ func registerControllers() {
 				},
 				RenderArgNames: map[int][]string{},
 			},
+			{
+				Name: "Show",
+				Args: []*MethodArg{
+					{Name: "id", Type: reflect.TypeOf((*int)(nil))},
+				},
+				RenderArgNames: map[int][]string{},
+			},
+			{
+				Name: "WildShow",
+				Args: []*MethodArg{
+					{Name: "id", Type: reflect.TypeOf((*string)(nil))},
+				},
+				RenderArgNames: map[int][]string{},
+			},
+			{
+				Name: "Save",
+				Args: []*MethodArg{
+				},
+				RenderArgNames: map[int][]string{},
+			},
+			{
+				Name: "Update",
+				Args: []*MethodArg{
+				},
+				RenderArgNames: map[int][]string{},
+			},
 		})
 }
 func startFakeBookingApp() {

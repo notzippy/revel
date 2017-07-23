@@ -122,7 +122,7 @@ func getUnknownValueFormat() string {
 func loadMessages(path string) {
 	messages = make(map[string]*config.Config)
 
-	// Read in messages from the modules. Load the module messges first,
+	// Read in messages from the modules. Load the module messages first,
 	// so that it can be override in parent application
 	for _, module := range Modules {
 		TRACE.Println("Importing messages from module:", module.ImportPath)

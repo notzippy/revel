@@ -83,7 +83,7 @@ func init() {
 }
 
 // NewRoute prepares the route to be used in matching.
-func NewRoute(moduleSource *Module, method, path, action, fixedArgs, routesPath string, line int) (r *Route) {
+func NewRoute(moduleSource *Module, method, path, action, fixedArgs, routesPath string, line int) (r *Route, pathData *ActionPathData) {
 	// Handle fixed arguments
 	argsReader := strings.NewReader(string(namespaceReplace([]byte(fixedArgs), moduleSource)))
 	csv := csv.NewReader(argsReader)
@@ -112,7 +112,8 @@ func NewRoute(moduleSource *Module, method, path, action, fixedArgs, routesPath 
 
 	// Ignore the not found status code
 	if action != httpStatusCode {
-		pathData, found := splitActionPath(&ActionPathData{ModuleSource: moduleSource, Route: r}, r.Action, false)
+		var found bool
+		pathData, found = splitActionPath(&ActionPathData{ModuleSource: moduleSource, Route: r}, r.Action, false)
 		if found {
 			if pathData.TypeOfController != nil {
 				// Assign controller type to avoid looking it up based on name
@@ -125,8 +126,6 @@ func NewRoute(moduleSource *Module, method, path, action, fixedArgs, routesPath 
 						for i, argValue := range pathData.Route.FixedParams {
 							Unbind(pathData.FixedParamsByName, methodType.Args[i].Name, argValue)
 						}
-					} else {
-						ERROR.Panicf("Method %s not found for controller %s", pathData.MethodName, pathData.ControllerName)
 					}
 				}
 			}
@@ -136,8 +135,6 @@ func NewRoute(moduleSource *Module, method, path, action, fixedArgs, routesPath 
 			r.MethodName = pathData.MethodName
 
 			// The same action path could be used for multiple routes (like the Static.Serve)
-		} else {
-			ERROR.Panicf("Failed to find controller for route path action %s \n%#v\n", path+"?"+r.Action,actionPathCacheMap)
 		}
 	}
 	return
@@ -466,7 +463,20 @@ func parseRoutes(moduleSource *Module, routesPath, joinedPath, content string, v
 			continue
 		}
 
-		route := NewRoute(moduleSource, method, path, action, fixedArgs, routesPath, n)
+		route, pathData := NewRoute(moduleSource, method, path, action, fixedArgs, routesPath, n)
+		if pathData!=nil {
+			if pathData.TypeOfController == nil && pathData.ControllerName[0] != ':' {
+				ERROR.Panicf("Failed to find controller for route path action %s \n%#v\n", path+"?"+route.Action, actionPathCacheMap)
+			} else {
+				if pathData.TypeOfController != nil && pathData.MethodName[0] != ':' && pathData.TypeOfController.Method(pathData.MethodName) == nil {
+					methods := ""
+					for _, m := range pathData.TypeOfController.Methods {
+						methods += m.Name + ","
+					}
+					ERROR.Panicf("Method %s (found %s) not found for controller %s", pathData.MethodName, methods, pathData.ControllerName)
+				}
+			}
+		}
 		routes = append(routes, route)
 
 		if validate {
