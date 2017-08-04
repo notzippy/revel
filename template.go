@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // ErrorCSSClass httml CSS error class name
@@ -33,6 +34,8 @@ type TemplateLoader struct {
 	TemplatePaths map[string]string
 	// A map of looked up template results
 	TemplateMap   map[string]Template
+	// Lock to prevent concurrent map writes
+	templateMutex sync.Mutex
 }
 
 type Template interface {
@@ -52,13 +55,11 @@ var whiteSpacePattern = regexp.MustCompile(`\s+`)
 func NewTemplateLoader(paths []string) *TemplateLoader {
 	loader := &TemplateLoader{
 		paths: paths,
+		templateMutex: sync.Mutex{},
 	}
 	return loader
 }
 
-// Refresh method scans the views directory and parses all templates as Go Templates.
-// If a template fails to parse, the error is set on the loader.
-// (It's awkward to refresh a single Go Template)
 // Refresh method scans the views directory and parses all templates as Go Templates.
 // If a template fails to parse, the error is set on the loader.
 // (It's awkward to refresh a single Go Template)
@@ -329,6 +330,7 @@ func (loader *TemplateLoader) TemplateLang(name, lang string) (tmpl Template, er
 
 	return
 }
+
 func (loader *TemplateLoader) templateLoad(name string) (tmpl Template) {
 	if t,found := loader.TemplateMap[name];!found && t != nil {
 		tmpl = t
@@ -336,6 +338,8 @@ func (loader *TemplateLoader) templateLoad(name string) (tmpl Template) {
 		// Look up and return the template.
 		for _, engine := range loader.templatesAndEngineList {
 			if tmpl = engine.Lookup(name); tmpl != nil {
+				loader.templateMutex.Lock()
+				defer loader.templateMutex.Unlock()
 				loader.TemplateMap[name] = tmpl
 				break
 			}

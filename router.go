@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/revel/pathtree"
 	"sync"
+	"os"
 )
 
 const (
@@ -158,13 +158,13 @@ type Router struct {
 	path   string // path to the routes file
 }
 
-func (router *Router) Route(req *http.Request) (routeMatch *RouteMatch) {
+func (router *Router) Route(req *Request) (routeMatch *RouteMatch) {
 	// Override method if set in header
-	if method := req.Header.Get("X-HTTP-Method-Override"); method != "" && req.Method == "POST" {
+	if method := req.GetHttpHeader("X-HTTP-Method-Override"); method != "" && req.Method == "POST" {
 		req.Method = method
 	}
 
-	leaf, expansions := router.Tree.Find(treePath(req.Method, req.URL.Path))
+	leaf, expansions := router.Tree.Find(treePath(req.Method, req.GetPath()))
 	if leaf == nil {
 		return nil
 	}
@@ -288,7 +288,7 @@ func splitActionPath(actionPathData *ActionPathData, actionPath string, useCache
 		typeOfController                                        *ControllerType
 	)
 	actionSplit := strings.Split(actionPath, ".")
-	if actionPathData!=nil {
+	if actionPathData != nil {
 		foundModuleSource = actionPathData.ModuleSource
 	}
 	if len(actionSplit) == 2 {
@@ -307,13 +307,13 @@ func splitActionPath(actionPathData *ActionPathData, actionPath string, useCache
 			}
 			controllerName = controllerName[i+1:]
 			// Check for the type of controller
-			typeOfController = foundModuleSource.ControllerByName(controllerName,methodName)
+			typeOfController = foundModuleSource.ControllerByName(controllerName, methodName)
 			found = typeOfController != nil
 		} else if controllerName[0] != ':' {
 			// First attempt to find the controller in the module source
-			if foundModuleSource!=nil {
-				typeOfController = foundModuleSource.ControllerByName(controllerName,methodName)
-				if typeOfController!=nil {
+			if foundModuleSource != nil {
+				typeOfController = foundModuleSource.ControllerByName(controllerName, methodName)
+				if typeOfController != nil {
 					controllerNamespace = typeOfController.Namespace
 				}
 			}
@@ -351,7 +351,11 @@ func splitActionPath(actionPathData *ActionPathData, actionPath string, useCache
 		}
 		action = actionSplit[1]
 	} else {
-		WARN.Printf("Invalid action path %s ", actionPath)
+		foundPaths := ""
+		for path:=range actionPathCacheMap {
+			foundPaths += path +","
+		}
+		WARN.Printf("Invalid action path %s found paths %s", actionPath, foundPaths)
 		found = false
 	}
 
@@ -377,7 +381,7 @@ func splitActionPath(actionPathData *ActionPathData, actionPath string, useCache
 			}
 		}
 		actionPathData.TypeOfController = foundModuleSource.ControllerByName(controllerName, "")
-		if actionPathData.TypeOfController == nil && actionPathData.ControllerName[0]!=':' {
+		if actionPathData.TypeOfController == nil && actionPathData.ControllerName[0] != ':' {
 			WARN.Printf("Router: No controller found for %s %#v", foundModuleSource.Namespace()+controllerName, controllers)
 		}
 
@@ -551,7 +555,10 @@ func getModuleRoutes(moduleName, joinedPath string, validate bool) (routes []*Ro
 		INFO.Println("Skipping routes for inactive module", moduleName)
 		return nil, nil
 	}
-	routes, err = parseRoutesFile(module, filepath.Join(module.Path, "conf", "routes"), joinedPath, validate)
+	routePath :=  filepath.Join(module.Path, "conf", "routes")
+	if _,e:=os.Stat(routePath);e == nil {
+		routes, err = parseRoutesFile(module, routePath, joinedPath, validate)
+	}
 	if err == nil {
 		for _, route := range routes {
 			route.ModuleSource = module
@@ -616,18 +623,20 @@ func (router *Router) Reverse(action string, argValues map[string]string) (ad *A
 					// Wildcard match in same module space
 					pathData.Route = route
 					break
-				} else if route.ActionPath() == pathData.ModuleSource.Namespace()+pathData.ControllerName {
+				} else if route.ActionPath() == pathData.ModuleSource.Namespace()+pathData.ControllerName &&
+					(route.Method[0] == ':' || route.Method == pathData.MethodName) {
 					// Action path match
 					pathData.Route = route
 					break
-				} else if route.ControllerName == pathData.ControllerName {
+				} else if route.ControllerName == pathData.ControllerName &&
+					(route.Method[0] == ':' || route.Method == pathData.MethodName) {
 					// Controller name match
 					possibleRoute = route
 				}
 			}
 			if pathData.Route == nil && possibleRoute != nil {
 				pathData.Route = possibleRoute
-				WARN.Printf("For reverse action %s matched path route %#v", action, possibleRoute)
+				WARN.Printf("For a url reverse a match was based on  %s matched path to route %#v ", action, possibleRoute)
 			}
 			if pathData.Route != nil {
 				TRACE.Printf("Reverse Storing recognized action path %s for route %#v\n", action, pathData.Route)
@@ -676,8 +685,10 @@ func (router *Router) Reverse(action string, argValues map[string]string) (ad *A
 				if el == "" || (el[0] != ':' && el[0] != '*') {
 					continue
 				}
-
-				val, ok := argValues[el[1:]]
+				val, ok := pathData.FixedParamsByName[el[1:]]
+				if !ok {
+					val, ok = argValues[el[1:]]
+				}
 				if !ok {
 					val = "<nil>"
 					ERROR.Print("revel/router: reverse route missing route arg ", el[1:])
@@ -723,9 +734,9 @@ func (router *Router) Reverse(action string, argValues map[string]string) (ad *A
 
 func RouterFilter(c *Controller, fc []Filter) {
 	// Figure out the Controller/Action
-	route := MainRouter.Route(c.Request.Request)
+	route := MainRouter.Route(c.Request)
 	if route == nil {
-		c.Result = c.NotFound("No matching route found: " + c.Request.RequestURI)
+		c.Result = c.NotFound("No matching route found: " + c.Request.GetRequestURI())
 		return
 	}
 
@@ -767,10 +778,13 @@ func HTTPMethodOverride(c *Controller, fc []Filter) {
 	// An array of HTTP verbs allowed.
 	verbs := []string{"POST", "PUT", "PATCH", "DELETE"}
 
-	method := strings.ToUpper(c.Request.Request.Method)
+	method := strings.ToUpper(c.Request.Method)
 
 	if method == "POST" {
-		param := strings.ToUpper(c.Request.Request.PostFormValue("_method"))
+		param := ""
+		if f, err := c.Request.GetForm(); err == nil {
+			param = strings.ToUpper(f.Get("_method"))
+		}
 
 		if len(param) > 0 {
 			override := false
@@ -783,7 +797,7 @@ func HTTPMethodOverride(c *Controller, fc []Filter) {
 			}
 
 			if override {
-				c.Request.Request.Method = param
+				c.Request.Method = param
 			} else {
 				c.Response.Status = 405
 				c.Result = c.RenderError(&Error{
