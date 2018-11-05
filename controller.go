@@ -46,7 +46,7 @@ type Controller struct {
 }
 
 // The map of controllers, controllers are mapped by using the namespace|controller_name as the key
-var controllers = make(map[string]*ControllerType)
+var controllers = make(ControllerContainer)
 var controllerLog = RevelLog.New("section", "controller")
 
 // NewController returns new controller instance for Request and Response
@@ -471,58 +471,6 @@ func (c *Controller) resetAppControllerFields() {
 	}
 }
 
-func findControllers(appControllerType reflect.Type) (indexes [][]int) {
-	// It might be a multi-level embedding. To find the controllers, we follow
-	// every anonymous field, using breadth-first search.
-	type nodeType struct {
-		val   reflect.Value
-		index []int
-	}
-	appControllerPtr := reflect.New(appControllerType)
-	queue := []nodeType{{appControllerPtr, []int{}}}
-	for len(queue) > 0 {
-		// Get the next value and de-reference it if necessary.
-		var (
-			node     = queue[0]
-			elem     = node.val
-			elemType = elem.Type()
-		)
-		if elemType.Kind() == reflect.Ptr {
-			elem = elem.Elem()
-			elemType = elem.Type()
-		}
-		queue = queue[1:]
-
-		// #944 if the type's Kind is not `Struct` move on,
-		// otherwise `elem.NumField()` will panic
-		if elemType.Kind() != reflect.Struct {
-			continue
-		}
-
-		// Look at all the struct fields.
-		for i := 0; i < elem.NumField(); i++ {
-			// If this is not an anonymous field, skip it.
-			structField := elemType.Field(i)
-			if !structField.Anonymous {
-				continue
-			}
-
-			fieldValue := elem.Field(i)
-			fieldType := structField.Type
-
-			// If it's a Controller, record the field indexes to get here.
-			if fieldType == controllerPtrType {
-				indexes = append(indexes, append(node.index, i))
-				continue
-			}
-
-			queue = append(queue,
-				nodeType{fieldValue, append(append([]int{}, node.index...), i)})
-		}
-	}
-	return
-}
-
 // RegisterController registers a Controller and its Methods with Revel.
 func RegisterController(c interface{}, methods []*MethodType) {
 	// De-star the controller type
@@ -540,7 +488,7 @@ func RegisterController(c interface{}, methods []*MethodType) {
 	// Fetch module for controller, if none found controller must be part of the app
 	controllerModule := ModuleFromPath(elem.PkgPath(), true)
 
-	controllerType := AddControllerType(controllerModule, elem, methods)
+	controllerType := controllers.AddControllerType(controllerModule, elem, methods)
 
 	controllerLog.Debug("RegisterController:Registered controller", "controller", controllerType.Name())
 }

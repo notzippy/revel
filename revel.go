@@ -6,7 +6,6 @@ package revel
 
 import (
 	"go/build"
-	"log"
 	"path/filepath"
 	"strings"
 
@@ -96,6 +95,11 @@ var (
 //   srcPath - the path to the source directory, containing Revel and the app.
 //     If not specified (""), then a functioning Go installation is required.
 func Init(inputmode, importPath, srcPath string) {
+	defer func(){
+		if r := recover(); r != nil {
+			RevelLog.Fatal("Recovered in init","error", r)
+		}
+	}()
 	RevelConfig = &model.RevelContainer{}
 	// Ignore trailing slashes.
 	ImportPath = strings.TrimRight(importPath, "/")
@@ -150,6 +154,7 @@ func Init(inputmode, importPath, srcPath string) {
 
 	// After application config is loaded update the logger
 	updateLog(inputmode)
+
 
 	// Configure properties from app.conf
 	DevMode = Config.BoolDefault("mode.dev", false)
@@ -219,7 +224,7 @@ func updateLog(inputmode string) (returnMode string) {
 		// Ensure that the selected runmode appears in app.conf.
 		// If empty string is passed as the mode, treat it as "DEFAULT"
 		if !Config.HasSection(returnMode) {
-			log.Fatalln("app.conf: No mode found:", returnMode)
+			RevelLog.Fatal("app.conf: No mode found:", "mode", returnMode)
 		}
 		Config.SetSection(returnMode)
 		newContext = Config
